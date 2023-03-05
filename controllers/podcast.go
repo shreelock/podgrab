@@ -292,7 +292,9 @@ func GetPodcastItemFileById(c *gin.Context) {
 				c.Header("Content-Type", GetFileContentType(podcast.DownloadPath))
 				c.File(podcast.DownloadPath)
 			} else {
-				c.Redirect(302, podcast.FileURL)
+				fmt.Println("Podcast Item not found, downloading on the disk instead of redirecting.")
+				go service.DownloadSingleEpisode(searchByIdQuery.Id)
+				c.JSON(http.StatusNoContent, gin.H{"error": "Starting download."})
 			}
 		}
 	} else {
