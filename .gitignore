@@ -18,3 +18,7 @@ assets/*
 keys/*
 backups/*
 nodemon.json
+go.sum
+go.mod
+findings.txt
+.gitignore

@@ -35,7 +35,7 @@ func ParseOpml(content string) (model.OpmlModel, error) {
 	return response, err
 }
 
-//FetchURL is
+// FetchURL is
 func FetchURL(url string) (model.PodcastData, []byte, error) {
 	body, err := makeQuery(url)
 	if err != nil {
@@ -609,6 +609,7 @@ func DownloadSingleEpisode(podcastItemId string) error {
 	err = SetPodcastItemAsDownloaded(podcastItem.ID, url)
 
 	if setting.DownloadEpisodeImages {
+		fmt.Println("Downloading Episode Image locally")
 		downloadImageLocally(podcastItem.ID)
 	}
 	return err

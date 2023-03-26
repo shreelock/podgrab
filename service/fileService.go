@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,9 +18,20 @@ import (
 	"strconv"
 	"time"
 
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goregular"
+
 	"github.com/akhilrex/podgrab/db"
 	"github.com/akhilrex/podgrab/internal/sanitize"
+	"github.com/disintegration/imaging"
 	stringy "github.com/gobeam/stringy"
+	"github.com/golang/freetype"
+	"github.com/golang/freetype/truetype"
 )
 
 func Download(link string, episodeTitle string, podcastName string, prefix string) (string, error) {
@@ -137,12 +149,14 @@ func DownloadPodcastCoverImage(link string, podcastName string) (string, error) 
 	defer resp.Body.Close()
 	_, erra := io.Copy(file, resp.Body)
 	//fmt.Println(size)
+	fmt.Println("Cover Image has been downloaded to :" + finalPath)
 	defer file.Close()
 	if erra != nil {
 		Logger.Errorw("Error saving file"+link, err)
 		return "", erra
 	}
 	changeOwnership(finalPath)
+	addLabelToImage(finalPath)
 	return finalPath, nil
 }
 
@@ -182,14 +196,87 @@ func DownloadImage(link string, episodeId string, podcastName string) (string, e
 	_, erra := io.Copy(file, resp.Body)
 	//fmt.Println(size)
 	defer file.Close()
+	fmt.Println("Image has been downloaded to :" + finalPath)
+	addLabelToImage(finalPath)
 	if erra != nil {
 		Logger.Errorw("Error saving file"+link, err)
 		return "", erra
 	}
 	changeOwnership(finalPath)
 	return finalPath, nil
-
 }
+
+func addLabelToImage(path string) {
+	fmt.Println("Adding Label to the file at : " + path)
+	// Open the image file.
+	file, err := os.Open(path)
+	if err != nil {
+		Logger.Errorw("Error opening file "+path, err)
+	}
+	defer file.Close()
+
+	// Decode the image.
+	img, _, err := image.Decode(file)
+	if err != nil {
+		Logger.Errorw("Error decoding image file", err)
+	}
+
+	// Create a new image with the same dimensions as the original image.
+	dst := imaging.New(img.Bounds().Dx(), img.Bounds().Dy(), color.NRGBA{0, 0, 0, 0})
+
+	// Overlay the original image onto the new image.
+	draw.Draw(dst, dst.Bounds(), img, image.Point{0, 0}, draw.Src)
+
+	// Add the text to the new image.
+	text := "PodGrabbed"
+	fontz, _ := truetype.Parse(goregular.TTF)
+
+	// Create a new font face with the desired size.
+	fontSize := float64(img.Bounds().Max.Y / 10)
+	fontFace := truetype.NewFace(fontz, &truetype.Options{Size: fontSize})
+
+	pt := freetype.Pt(int(fontSize), img.Bounds().Max.Y-int(fontSize))
+	drawer := &font.Drawer{
+		Dst:  dst,
+		Src:  image.White,
+		Face: fontFace,
+		Dot:  pt,
+	}
+
+	// Add a highlight behind the text.
+	highlightColor := color.RGBA{0, 0, 0, 255}
+	textWidth := drawer.MeasureString(text).Ceil()
+	textHeight := int(fontSize)
+	marginGap := int(fontSize)
+	borderGap := int(fontSize) / 20
+
+	topLeftX := marginGap - borderGap
+	topLeftY := img.Bounds().Max.Y - (marginGap + textHeight)
+	botRightX := topLeftX + textWidth + borderGap
+	botRightY := topLeftY + textHeight + borderGap*4
+	highlightRect := image.Rect(topLeftX, topLeftY, botRightX, botRightY)
+	draw.Draw(dst, highlightRect, &image.Uniform{highlightColor}, image.Point{}, draw.Src)
+	drawer.DrawString(text)
+
+	outPath := path + ".tmp"
+	outFile, err := os.Create(outPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer outFile.Close()
+
+	err = jpeg.Encode(outFile, dst, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Watermaked Image created at :" + outPath)
+	fmt.Println("Will now be overwriting input Image.")
+	err = os.Rename(outPath, path)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
 func changeOwnership(path string) {
 	uid, err1 := strconv.Atoi(os.Getenv("PUID"))
 	gid, err2 := strconv.Atoi(os.Getenv("PGID"))
